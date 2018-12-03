@@ -5,8 +5,13 @@
 import argparse
 import re
 import sys
-import urllib2
+import urllib.request, urllib.error
+import chardet
 
+#===== configuration ====>
+class Configuration:
+	USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit Chrome Safari'
+#<==== configuration =====
 
 def parse_list(content, trusted=False):
     rx_comment = re.compile(r'^(#|$)')
@@ -17,7 +22,7 @@ def parse_list(content, trusted=False):
     rx_mdl = re.compile(r'^"[^"]+","([a-z0-9.-]+[.][a-z]{2,})",')
     rx_b = re.compile(r'^([a-z0-9.-]+[.][a-z]{2,}),.+,[0-9: /-]+,')
     rx_dq = re.compile(r'^address=/([a-z0-9.-]+[.][a-z]{2,})/.')
-    rx_trusted = re.compile(r'^([*a-z0-9.-]+)$')
+    rx_trusted = re.compile(r'^(=?[*a-z0-9.-]+)$')
 
     names = set()
     rx_set = [rx_u, rx_l, rx_h, rx_mdl, rx_b, rx_dq]
@@ -41,20 +46,31 @@ def load_from_url(url):
     sys.stderr.write("Loading data from [{}]\n".format(url))
     # Some lists seem to intentionally 404 the default user-agent...
     # Taken from https://techblog.willshouse.com/2012/01/03/most-common-user-agents/
-    req = urllib2.Request(url=url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36'})
+    headers = {
+        'user-agent': Configuration.USER_AGENT
+    }
+    req = urllib.request.Request(url=url, method='GET',headers=headers)
+
     trusted = False
-    if req.get_type() == "file":
+    if req.type == "file":
         trusted = True
+    
     response = None
     try:
-        response = urllib2.urlopen(req, timeout=int(args.timeout))
-    except urllib2.URLError as err:
+        response = urllib.request.urlopen(req, timeout=int(args.timeout))
+    except urllib.error.URLError as err:
         raise Exception("[{}] could not be loaded: {}\n".format(url, err))
+    except urllib.error.ContentTooShortError as err:
+        raise Exception("[{}] data is less than the expected amount: {}\n".format(url, err))
+    
     if trusted is False and response.getcode() != 200:
         raise Exception("[{}] returned HTTP code {}\n".format(url, response.getcode()))
+    
     content = response.read()
+    detres = chardet.detect(content)
+    decoded_content = content.decode(detres['encoding'])
 
-    return (content, trusted)
+    return (decoded_content, trusted)
 
 
 def name_cmp(name):
@@ -81,14 +97,14 @@ def whitelist_from_url(url):
     return parse_list(content, trusted)
 
 
-def domainlist_from_config_file(file, outfile, whitelist, time_restricted_url, ignore_retrieval_failure):
+def domainlist_from_config_file(conf, outfile, whitelist, time_restricted_url, ignore_retrieval_failure):
     blacklists = {}
     whitelisted_names = set()
     all_names = set()
     unique_names = set()
 
     # Load conf & blacklists
-    with open(file) as fd:
+    with open(conf, encoding='utf_8_sig') as fd:
         for line in fd:
             line = str.strip(line)
             if str.startswith(line, "#") or line == "":
@@ -160,15 +176,17 @@ argp.add_argument("-i", "--ignore-retrieval-failure", action='store_true',
     help="generate list even if some urls couldn't be retrieved")
 argp.add_argument("-t", "--timeout", default=30,
     help="URL open timeout")
+argp.add_argument("-o", "--output", default="",
+    help="file output")
 args = argp.parse_args()
 
 time_restricted = args.time_restricted
 ignore_retrieval_failure = args.ignore_retrieval_failure
 
-wf = open('whitelist-domains.txt', 'w')
-domainlist_from_config_file(args.whitelist, wf, None, time_restricted, ignore_retrieval_failure)
-wf.close()
+wdf = open('whitelist-domains.txt', 'w', encoding='utf_8', newline='\n')
+domainlist_from_config_file(args.whitelist, wdf, None, time_restricted, ignore_retrieval_failure)
+wdf.close()
 
-f = open('blacklist.txt', 'w')
-domainlist_from_config_file(args.config, f, "whitelist-domains.txt", time_restricted, ignore_retrieval_failure)
-f.close()
+blf = open(args.output if args.output else 'blacklist.txt', 'w', encoding='utf_8', newline='\n')
+domainlist_from_config_file(args.config, blf, "whitelist-domains.txt", time_restricted, ignore_retrieval_failure)
+blf.close()
