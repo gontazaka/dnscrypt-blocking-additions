@@ -36,5 +36,7 @@ Parameter | Default value | Description
 `-c` or `--config` | `domains-blacklist.conf` | file containing domain list sources
 `-w` or `--whitelist` | `domains-whitelist.conf` | file containing a set of names to exclude from the blacklist
 `-i` or `--ignore-retrieval-failure` | - | generate list even if some urls couldn't be retrieved
+`-t` or `--timeout` | 30 | URL open timeout
+`-o` or `--output` | 'blacklist.txt' | file output
 
 [WindowsSpyBlocker]: https://github.com/crazy-max/WindowsSpyBlocker
